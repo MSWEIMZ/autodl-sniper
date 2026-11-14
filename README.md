@@ -42,7 +42,7 @@ AutoDL GPU 空闲监控 & 抢卡工具：盯住想要的卡型，空卡一出立
 需要 Python 3.8+（无任何第三方依赖）和自己的 AutoDL 账号。
 
 ```bash
-git clone https://github.com/<你的用户名>/autodl-sniper.git
+git clone https://github.com/MSWEIMZ/autodl-sniper.git
 cd autodl-sniper
 python autodl_monitor.py      # 或 Windows 双击 启动监控.bat / start.bat
 ```
