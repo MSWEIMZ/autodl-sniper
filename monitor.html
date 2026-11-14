@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232563eb'/%3E%3Ctext x='32' y='42' font-size='28' font-weight='800' fill='%23fff' text-anchor='middle' font-family='Arial'%3EDL%3C/text%3E%3C/svg%3E">
+<title>AutoDL 抢卡监控</title>
+<style>
+  :root {
+    --bg: #f2f4f8;
+    --card: #ffffff;
+    --border: #e6eaf0;
+    --border-strong: #d6dce6;
+    --text: #1f2733;
+    --sub: #5f6b7d;
+    --dim: #94a1b3;
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --primary-soft: #eef4ff;
+    --green: #16a34a;
+    --green-soft: #ecfdf3;
+    --red: #dc2626;
+    --red-soft: #fef2f2;
+    --amber: #d97706;
+    --amber-soft: #fffbeb;
+    --radius: 12px;
+    --shadow: 0 1px 2px rgba(16,24,40,.05);
+    --shadow-lg: 0 4px 16px rgba(16,24,40,.08);
+    --mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #c7cfda; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #a9b4c4; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ---------- header ---------- */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 0 26px; height: 64px;
+    background: rgba(255,255,255,.88); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; margin-right: 8px; }
+  .logo {
+    width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+    background: linear-gradient(135deg, #2563eb, #06b6d4);
+    display: grid; place-items: center;
+    font-weight: 800; font-size: 14px; color: #fff; letter-spacing: .5px;
+    box-shadow: 0 2px 8px rgba(37,99,235,.3);
+  }
+  .brand-t h1 { font-size: 16px; font-weight: 700; letter-spacing: .2px; line-height: 1.2; }
+  .brand-t span { font-size: 11.5px; color: var(--dim); letter-spacing: .3px; }
+
+  .hd-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+    border: 1px solid var(--border); background: #f8fafc; color: var(--sub);
+    white-space: nowrap;
+  }
+  .pill.on { color: var(--green); border-color: #bbf0cf; background: var(--green-soft); }
+  .pill.err { color: var(--red); border-color: #fecaca; background: var(--red-soft); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #b6c0cd; }
+  .pill.on .dot { background: var(--green); box-shadow: 0 0 0 3px rgba(22,163,74,.15); animation: pulse 1.4s infinite; }
+  .pill.err .dot { background: var(--red); box-shadow: 0 0 0 3px rgba(220,38,38,.12); }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .hd-act { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  header a.ext {
+    color: var(--sub); font-size: 12.5px; text-decoration: none;
+    padding: 6px 10px; border-radius: 8px; transition: all .15s;
+  }
+  header a.ext:hover { color: var(--primary); background: var(--primary-soft); }
+
+  button {
+    border: 1px solid var(--border-strong); border-radius: 8px;
+    background: #fff; color: var(--text);
+    padding: 9px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: all .15s; font-family: inherit;
+  }
+  button:hover { border-color: var(--primary); color: var(--primary); }
+  button:disabled { opacity: .4; cursor: default; border-color: var(--border-strong); color: var(--sub); }
+  button.primary {
+    background: var(--primary); border-color: var(--primary); color: #fff;
+    box-shadow: 0 1px 3px rgba(37,99,235,.3);
+  }
+  button.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); color: #fff; }
+  button.ghost-danger { color: var(--red); border-color: #fecaca; background: #fff; }
+  button.ghost-danger:hover { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+
+  /* ---------- layout ---------- */
+  .layout { display: flex; align-items: flex-start; min-height: calc(100vh - 65px); }
+  .nav {
+    width: 118px; flex-shrink: 0; padding: 18px 10px;
+    display: flex; flex-direction: column; gap: 8px;
+    position: sticky; top: 65px; max-height: calc(100vh - 65px); overflow-y: auto;
+  }
+  .nav-item {
+    padding: 11px 6px; border-radius: 11px; cursor: pointer; user-select: none;
+    text-align: center; color: var(--dim); border: 1px solid transparent;
+    transition: all .15s;
+  }
+  .nav-item b { display: block; font-size: 13.5px; }
+  .nav-item span { display: block; font-size: 10.5px; font-weight: 500; margin-top: 3px; opacity: .8; }
+  .nav-item:hover { background: #f1f5f9; color: var(--text); }
+  .nav-item.on { background: var(--primary-soft); color: var(--primary); border-color: #c7dcfe; }
+  .main {
+    flex: 1; padding: 20px 24px; min-width: 0;
+    display: flex; flex-direction: column;
+    min-height: calc(100vh - 65px);
+  }
+  .page { display: none; flex: 1; flex-direction: column; min-width: 0; }
+  .page.on { display: flex; }
+  .page-h {
+    font-size: 16px; font-weight: 700; color: var(--text);
+    margin: 2px 0 16px; display: flex; align-items: baseline; gap: 10px;
+  }
+  .page-h span { font-size: 12px; font-weight: 500; color: var(--dim); }
+  .pg-grid {
+    display: grid; gap: 16px; align-items: start;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 470px));
+  }
+  .opts { display: flex; gap: 40px; flex-wrap: wrap; }
+  .opts label.row { gap: 14px; padding: 6px 0; }
+  .opts label.row + label.row { border-top: none; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 20px 22px;
+  }
+  .card-h {
+    font-size: 14px; font-weight: 700; color: var(--text);
+    margin-bottom: 15px; display: flex; align-items: center; gap: 8px;
+  }
+  .card-h::before {
+    content: ""; width: 3px; height: 14px; border-radius: 2px;
+    background: linear-gradient(180deg, var(--primary), #06b6d4);
+  }
+  .card-h .sub-tag { font-size: 11px; font-weight: 500; color: var(--dim); margin-left: auto; }
+
+  /* ---------- chips ---------- */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    border: 1px solid var(--border-strong); border-radius: 8px;
+    padding: 8px 15px; cursor: pointer; user-select: none;
+    font-size: 13px; font-weight: 600; color: var(--sub);
+    background: #f8fafc; transition: all .12s;
+  }
+  .chip:hover { border-color: var(--primary); color: var(--primary); }
+  .chip.sel {
+    background: var(--primary-soft); border-color: var(--primary); color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37,99,235,.08);
+  }
+  .chip .cnt {
+    margin-left: 6px; padding: 0 6px; border-radius: 6px;
+    background: var(--green-soft); color: var(--green);
+    font-family: var(--mono); font-weight: 700; font-size: 11px;
+  }
+  .chip .cnt:empty { display: none; }
+
+  /* ---------- form ---------- */
+  label.row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 9px 0; font-size: 13.5px; color: var(--sub);
+  }
+  label.row + label.row { border-top: 1px dashed #eef1f5; }
+  input[type=number], input[type=text], input[type=time], select {
+    background: #fff; border: 1px solid var(--border-strong);
+    color: var(--text); border-radius: 8px; padding: 9px 12px;
+    font-size: 13.5px; width: 165px; outline: none; transition: all .15s;
+    font-family: inherit;
+  }
+  select { width: 100%; }
+  input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+  input::placeholder { color: #b6c0cd; }
+
+  input[type=checkbox] {
+    appearance: none; -webkit-appearance: none;
+    width: 42px; height: 23px; border-radius: 999px; flex-shrink: 0;
+    background: #d4dae3; position: relative; cursor: pointer;
+    transition: background .18s; border: none; padding: 0;
+  }
+  input[type=checkbox]::after {
+    content: ""; position: absolute; top: 2.5px; left: 3px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; transition: all .18s;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  }
+  input[type=checkbox]:checked { background: var(--primary); }
+  input[type=checkbox]:checked::after { left: 21px; }
+  input[type=checkbox].mini {
+    appearance: auto; -webkit-appearance: auto;
+    width: 15px; height: 15px; cursor: pointer; padding: 0; margin: 0;
+    vertical-align: middle; border: none; background: none;
+  }
+  input[type=checkbox].mini::after { display: none; }
+  input[type=checkbox].mini:checked { background: none; }
+  input[type=radio].mini {
+    width: 15px; height: 15px; cursor: pointer; padding: 0; margin: 0;
+    vertical-align: middle; accent-color: var(--primary);
+  }
+  input[type=radio].mini:disabled { cursor: not-allowed; opacity: .4; }
+
+  .hint { color: var(--dim); font-size: 11.5px; line-height: 1.7; margin-top: 8px; }
+  .warn { color: var(--amber); background: var(--amber-soft); border-radius: 8px; padding: 8px 11px; }
+  .divider { border-top: 1px solid var(--border); margin: 10px 0; }
+  .sec-label {
+    font-size: 12px; font-weight: 800; color: var(--sub); letter-spacing: .5px;
+    padding: 0 4px; margin: 6px 0 -4px;
+  }
+  details.adv { margin-top: 6px; }
+  details.adv summary {
+    cursor: pointer; color: var(--dim); font-size: 12px; user-select: none;
+  }
+  details.adv[open] summary { margin-bottom: 4px; }
+
+  /* ---------- main ---------- */
+  .big-alert {
+    display: none; align-items: center; gap: 12px;
+    padding: 14px 20px; border-radius: var(--radius); margin-bottom: 16px;
+    background: linear-gradient(90deg, #fef2f2, #fff7ed);
+    border: 1px solid #fecaca; color: var(--red);
+    font-size: 15px; font-weight: 700; letter-spacing: .3px;
+  }
+  .big-alert.ok {
+    background: linear-gradient(90deg, #ecfdf3, #f0fdf9);
+    border-color: #bbf0cf; color: var(--green);
+  }
+  .big-alert .alert-x {
+    margin-left: auto; cursor: pointer; flex-shrink: 0;
+    width: 26px; height: 26px; border-radius: 7px;
+    display: grid; place-items: center;
+    font-size: 14px; font-weight: 700; opacity: .55;
+  }
+  .big-alert .alert-x:hover { opacity: 1; background: rgba(0,0,0,.06); }
+
+  .statgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px,1fr)); gap: 14px; margin-bottom: 16px; }
+  .stat {
+    position: relative; overflow: hidden;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 22px 22px; box-shadow: var(--shadow);
+  }
+  .stat .name { font-weight: 700; font-size: 14.5px; color: var(--text); }
+  .stat .num {
+    font-family: var(--mono); color: var(--dim);
+    font-size: 38px; font-weight: 800; margin: 10px 0 3px; line-height: 1.1;
+  }
+  .stat .num small { font-size: 14px; font-weight: 600; }
+  .stat .sub { color: var(--dim); font-size: 12.5px; }
+  .stat.flash { border-color: #86e3ac; background: linear-gradient(180deg, var(--green-soft), #fff); }
+  .stat.flash .num { color: var(--green); }
+
+  .panel { padding: 0; overflow: hidden; margin-bottom: 16px; }
+  .panel.cand { flex: 1; display: flex; flex-direction: column; min-height: 300px; }
+  .panel.cand .table-wrap { flex: 1; overflow-y: auto; }
+  .panel-head {
+    padding: 14px 20px; font-size: 14px; font-weight: 700;
+    color: var(--text); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 9px;
+  }
+  .panel-head .live {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green); box-shadow: 0 0 0 3px rgba(22,163,74,.15);
+    animation: pulse 1.4s infinite;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th {
+    color: var(--dim); font-weight: 600; font-size: 12px; letter-spacing: .4px;
+    text-align: left; padding: 12px 18px; background: #f8fafc;
+    position: sticky; top: 0;
+  }
+  td { padding: 13px 18px; border-top: 1px solid #f0f3f7; color: var(--sub); }
+  tbody tr { transition: background .12s; }
+  tbody tr:hover { background: #f8fafc; }
+  td.mono, .mono { font-family: var(--mono); }
+  .gpu-tag {
+    font-weight: 700; font-size: 12.5px; color: var(--primary);
+    background: var(--primary-soft); border: 1px solid #bfdbfe;
+    padding: 4px 10px; border-radius: 6px; white-space: nowrap;
+  }
+  .good { color: var(--green); font-family: var(--mono); font-weight: 700; }
+  .empty-row td { color: var(--dim); text-align: center; font-size: 14px; }
+  .empty-row .empty-box { padding: 70px 0; }
+  .empty-row .empty-box .t1 { font-size: 15px; color: var(--sub); font-weight: 600; margin-bottom: 6px; }
+  a.go {
+    display: inline-block; padding: 5px 15px; border-radius: 7px;
+    background: var(--green-soft); border: 1px solid #bbf0cf; color: var(--green);
+    font-weight: 700; font-size: 12.5px; text-decoration: none; white-space: nowrap;
+  }
+  a.go:hover { box-shadow: 0 0 0 3px rgba(22,163,74,.12); }
+
+  .logbox {
+    background: #0d1117; color: #8b9bb4;
+    padding: 16px 20px; height: 320px; overflow-y: auto;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.85;
+    white-space: pre-wrap;
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .logbox::-webkit-scrollbar-thumb { background: #2a3547; }
+
+  /* ---------- onboarding ---------- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 100; display: none;
+    background: rgba(15,23,42,.45); backdrop-filter: blur(4px);
+    align-items: center; justify-content: center;
+  }
+  .overlay.show { display: flex; }
+  .wizard {
+    width: 500px; max-width: 92vw; max-height: 88vh; overflow-y: auto;
+    background: #fff; border: 1px solid var(--border);
+    border-radius: 16px; padding: 30px 32px;
+    box-shadow: 0 24px 64px rgba(15,23,42,.25);
+  }
+  .wizard h2 { font-size: 19px; margin-bottom: 4px; }
+  .wizard .sub { color: var(--sub); font-size: 12.5px; margin-bottom: 18px; }
+  .step { display: flex; gap: 13px; margin: 18px 0; }
+  .step-n {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    background: var(--primary-soft); border: 1px solid #bfdbfe; color: var(--primary);
+    display: grid; place-items: center; font-weight: 800; font-size: 13px;
+  }
+  .step-body { flex: 1; font-size: 13px; color: var(--sub); line-height: 1.75; }
+  .step-body b { color: var(--text); }
+  .bm-link {
+    display: inline-block; margin: 8px 0;
+    padding: 9px 18px; border-radius: 8px; cursor: grab;
+    background: var(--primary-soft); border: 1px dashed var(--primary); color: var(--primary);
+    font-weight: 700; text-decoration: none; font-size: 13px;
+  }
+  .code-line {
+    font-family: var(--mono); font-size: 11px; color: #2563eb;
+    background: #f8fafc; border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; margin-top: 6px;
+    word-break: break-all; cursor: pointer; user-select: all;
+  }
+
+  /* ---------- 新手引导 ---------- */
+  .tour-mask {
+    position: fixed; inset: 0; z-index: 200; display: none;
+    background: rgba(15,23,42,.45);
+  }
+  .tour-ring {
+    position: fixed; z-index: 201; display: none; pointer-events: none;
+    border: 2px solid var(--primary); border-radius: 14px;
+    box-shadow: 0 0 0 5px rgba(37,99,235,.18), 0 0 24px rgba(37,99,235,.35);
+    transition: all .28s ease;
+  }
+  .tour-tip {
+    position: fixed; z-index: 202; display: none; width: 340px;
+    background: #fff; border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: 0 16px 48px rgba(15,23,42,.28); padding: 18px 20px;
+    transition: left .28s ease, top .28s ease;
+  }
+  .tour-tip .tt { font-size: 15px; font-weight: 700; margin-bottom: 7px; }
+  .tour-tip .tx { font-size: 13px; color: var(--sub); line-height: 1.75; margin-bottom: 15px; }
+  .tour-foot { display: flex; align-items: center; gap: 8px; }
+  .tour-prog { color: var(--dim); font-size: 12px; margin-right: auto; font-family: var(--mono); }
+  .tour-skip {
+    background: none; border: none; color: var(--dim);
+    font-size: 12.5px; padding: 8px 6px;
+  }
+  .tour-skip:hover { color: var(--text); border: none; }
+  .tour-foot button { padding: 7px 14px; font-size: 13px; }
+
+  button:focus-visible, .chip:focus-visible, .nav-item:focus-visible {
+    outline: 2px solid var(--primary); outline-offset: 2px;
+  }
+  input:disabled, select:disabled { opacity: .45; cursor: not-allowed; background: #f4f6fa; }
+
+  @media (max-width: 900px) {
+    .pg-grid { grid-template-columns: 1fr; }
+    .statgrid { grid-template-columns: repeat(auto-fill, minmax(min(250px,100%),1fr)); }
+    header { height: auto; padding: 10px 16px; }
+    .layout { flex-direction: column; }
+    .nav { width: 100%; flex-direction: row; padding: 8px 10px; top: 0; max-height: none; }
+    .nav-item { flex: 1; }
+    .main { padding: 14px; min-height: 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">DL</div>
+    <div class="brand-t"><h1>AutoDL 抢卡监控</h1><span>GPU SNIPER</span></div>
+  </div>
+  <div class="hd-status">
+    <span class="pill" id="runPill"><span class="dot" id="dot"></span><span id="runText">未运行</span></span>
+    <span class="pill" id="tokBadge">token: 检测中</span>
+    <span class="pill" id="balBadge" style="display:none"></span>
+    <span class="pill" id="pollInfo" style="display:none"></span>
+  </div>
+  <div class="hd-act">
+    <a class="ext" href="#" id="btnTour">新手引导</a>
+    <a class="ext" href="https://www.autodl.com/market/list" target="_blank">官方市场 ↗</a>
+    <button id="btnMute" style="display:none">静音</button>
+    <button class="ghost-danger" id="btnStop">停止</button>
+    <button class="primary" id="btnStart">开始监控</button>
+  </div>
+</header>
+
+<div class="overlay" id="setupOverlay">
+  <div class="wizard">
+    <h2 id="setupTitle">连接 AutoDL 账号</h2>
+    <div class="sub" id="setupSub">需要一个登录 token 才能查询显卡市场 · 全程只在你本机使用</div>
+
+    <div class="step"><div class="step-n">1</div><div class="step-body">
+      <button class="primary" style="font-size:14px;padding:10px 22px" onclick="openAdl()">
+        去 AutoDL 登录 →</button>
+      <div class="hint" style="margin-top:6px">已登录会直接打开市场页，未登录会先跳登录页</div>
+    </div></div>
+
+    <div class="step"><div class="step-n">2</div><div class="step-body">
+      登录后<b>稍等几秒</b>，工具会自动接回 token 并<b>关闭 autodl 标签页跳回本页</b>，无需任何操作；
+      也可以点此立即读取：
+      <div><button class="primary" id="btnAutoTok" style="font-size:13px;padding:7px 18px;margin-top:8px">⚡ 立即读取浏览器 Token</button></div>
+      <div class="hint" id="autoTokHint" style="margin-top:6px"></div>
+    </div></div>
+
+    <div class="step"><div class="step-n">3</div><div class="step-body">
+      若自动读取失败（部分浏览器/压缩存储），在 autodl 页面按 <b>F12</b> → 控制台粘贴这一行回车（点击复制）：
+      <div class="code-line" id="consoleCode" title="点击复制"></div>
+      <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--dim);font-size:12px">其他方式</summary>
+        <div class="hint">① 拖这个书签按钮到书签栏，在 autodl 页面点它：<br>
+          <a class="bm-link" id="bmLink" href="#">⚡ 导入 AutoDL Token</a><br>
+          ② 控制台执行 copy(localStorage.getItem('token')) 粘贴到左侧 Token 框<br>
+          ③ 控制台 → 设置 → 开发者 Token 可生成长期有效的 token（推荐挂机）</div>
+      </details>
+    </div></div>
+
+    <div class="hint" style="text-align:center;margin-top:14px;color:var(--primary)">token 一到账，本页自动恢复并开始监控</div>
+  </div>
+</div>
+
+<div class="tour-mask" id="tourMask"></div>
+<div class="tour-ring" id="tourRing"></div>
+<div class="tour-tip" id="tourTip">
+  <div class="tt" id="tourTitle"></div>
+  <div class="tx" id="tourText"></div>
+  <div class="tour-foot">
+    <span class="tour-prog" id="tourProg"></span>
+    <button class="tour-skip" id="tourSkip">跳过教程</button>
+    <button id="tourPrev">上一步</button>
+    <button class="primary" id="tourNext">下一步</button>
+  </div>
+</div>
+
+<div class="layout">
+  <nav class="nav">
+    <div class="nav-item on" data-page="dash"><b>监控面板</b><span>实时空闲</span></div>
+    <div class="nav-item" data-page="grab"><b>抢新卡</b><span>策略·下单</span></div>
+    <div class="nav-item" data-page="inst"><b>我的实例</b><span>开机·克隆</span></div>
+    <div class="nav-item" data-page="set"><b>设置</b><span>通知·账号</span></div>
+  </nav>
+  <div class="main">
+    <div class="big-alert" id="bigAlert"><span id="bigAlertMsg"></span><span class="alert-x" id="alertX" title="关闭">✕</span></div>
+
+    <div class="page" id="page-grab">
+      <div class="page-h">抢新卡<span>盯哪些卡 · 发现空闲后做什么</span></div>
+      <div class="pg-grid">
+      <div class="card">
+      <div class="card-h">监控卡型<span class="sub-tag">多选</span></div>
+      <div class="chips" id="gpuChips">加载中…</div>
+    </div>
+    <div class="card">
+      <div class="card-h">区域筛选<span class="sub-tag">不选 = 全部区域</span></div>
+      <div class="chips" id="regionChips"></div>
+    </div>
+    <div class="card">
+      <div class="card-h">触发条件</div>
+      <label class="row">轮询间隔 (秒) <input type="number" id="interval" min="2" max="60" step="0.5"></label>
+      <label class="row">每台至少空闲卡数 <input type="number" id="reqGpu" min="1" max="8"></label>
+      <label class="row">最高单价 (元/时, 0不限) <input type="number" id="maxPrice" min="0" step="0.1"></label>
+      <details class="adv"><summary>高级</summary>
+        <label class="row">在线校验缓存 (秒) <input type="number" id="verifyTtl" min="0" max="120"></label>
+      </details>
+    </div>
+    <div class="card">
+      <div class="card-h">触发后的动作<span class="sub-tag">自动下单谨慎开启</span></div>
+      <label class="row">发现后自动打开创建页 <input type="checkbox" id="autoOpen"></label>
+      <label class="row">启用自动下单 <input type="checkbox" id="autoCreate"></label>
+      <label class="row">下单方式
+        <select id="grabMode" style="width:170px">
+          <option value="image">新建实例(镜像)</option>
+          <option value="clone">克隆已有实例</option>
+        </select>
+      </label>
+      <div id="cloneBox" style="display:none">
+        <div class="hint" id="cloneSrcPick"></div>
+        <label class="row">同时克隆数据盘 <input type="checkbox" id="cloneDataDisk"></label>
+        <label class="row">稀疏文件优化拷贝 <input type="checkbox" id="cloneSparse"></label>
+        <div class="hint" id="cloneSrcInfo"></div>
+        <div class="hint warn">克隆落到任意兼容机器(可不同卡型)，环境随盘带走；源实例不受影响，每日克隆次数有限。</div>
+      </div>
+      <div style="margin:10px 0 4px" id="imageBox">
+        <select id="imageSel"><option value="">— 选择镜像 —</option></select>
+      </div>
+      <label class="row">计费方式
+        <select id="chargeType" style="width:170px">
+          <option value="payg">按量计费</option>
+          <option value="daily">包日</option>
+          <option value="weekly">包周</option>
+          <option value="monthly">包月</option>
+        </select>
+      </label>
+      <label class="row">预付费时长 <input type="number" id="prepayDuration" min="1" max="36"></label>
+      <div class="hint">包日填天数、包周填周数、包月填月数；按量计费忽略此项</div>
+      <label class="row">数据盘扩容 (GB) <input type="number" id="expandDisk" min="0" step="1"></label>
+      <label class="row">实例名称 (可选) <input type="text" id="instName" placeholder="默认自动生成"></label>
+      <div class="divider"></div>
+      <label class="row">抢到即停 <input type="checkbox" id="autoStop"></label>
+      <label class="row">限定时间段开抢 <input type="checkbox" id="grabWindowEn"></label>
+      <label class="row">从 <input type="time" id="grabStart" style="width:100px"> 到 <input type="time" id="grabEnd" style="width:100px"></label>
+      <div class="hint warn">自动下单立即扣费。包日/包周/包月为预付费一次性扣款。开启时间段后，窗口外只监控不创建。</div>
+    </div>
+
+      </div>
+    </div>
+
+    <div class="page" id="page-inst">
+      <div class="page-h">我的实例<span>宿主机空闲监控 · 克隆源选择</span></div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-h">宿主机空卡监控<span class="sub-tag">☑监控列 = 提醒对象</span></div>
+        <div class="opts">
+          <label class="row">可开机提醒 <input type="checkbox" id="watchBoot"></label>
+          <label class="row">可开机自动开机 <input type="checkbox" id="autoPowerOn"></label>
+        </div>
+        <div class="hint warn">关机实例的宿主机腾出GPU才算"可开机"；☑监控 = 提醒对象，◉克隆源 = 克隆下单用哪台的盘(单选)；自动开机立即计费。</div>
+      </div>
+      <div class="card panel" id="instPanel" style="display:none">
+        <div class="panel-head"><span class="live"></span> 我的实例<span style="color:var(--dim);font-size:12px;font-weight:500;margin-left:8px">☑监控=宿主机可开机提醒 · ◉克隆源=克隆下单用哪台的盘(单选)</span></div>
+        <div class="table-wrap">
+          <table id="instTable">
+            <thead><tr><th>监控</th><th>克隆源</th><th>实例</th><th>卡型</th><th>机器</th><th>区域</th><th>状态</th><th>主机空闲卡</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="page-set">
+      <div class="page-h">设置<span>通知 · 账号</span></div>
+      <div class="pg-grid">
+      <div class="card">
+      <div class="card-h">报警通知</div>
+      <label class="row">声音报警 <input type="checkbox" id="notifySound"></label>
+      <details class="adv"><summary>高级</summary>
+        <label class="row">报警模式
+          <select id="alertMode" style="width:170px">
+            <option value="first">某卡型从无到有才报</option>
+            <option value="new">每台新空闲机器都报</option>
+          </select>
+        </label>
+        <label class="row">报警冷却 (秒) <input type="number" id="alertCooldown" min="0" max="3600"></label>
+        <label class="row">响铃时长 (秒, 0不停) <input type="number" id="alarmDuration" min="0" max="600"></label>
+      </details>
+      <label class="row" style="display:block">Webhook 通知
+        <input type="text" id="webhook" placeholder="https://.../{msg}" style="width:100%;margin-top:7px">
+      </label>
+    </div>
+    <div class="card">
+      <div class="card-h">Token</div>
+      <input type="text" id="tokenIn" placeholder="粘贴 localStorage token" style="width:100%">
+      <div class="hint">浏览器登录 autodl.com → F12 控制台执行 copy(localStorage.getItem('token')) → 粘贴于此</div>
+    </div>
+      </div>
+    </div>
+
+    <div class="page on" id="page-dash">
+      <div class="page-h">监控面板<span>市场空闲机器 · 实时状态</span></div>
+    <div class="statgrid" id="statGrid">
+      <div class="stat"><div class="name">—</div><div class="num">--</div><div class="sub">选择卡型并开始监控</div></div>
+    </div>
+
+    <div class="card panel cand">
+      <div class="panel-head"><span class="live"></span> 空闲机器 · 实时校验通过</div>
+      <div class="table-wrap">
+        <table id="candTable">
+          <thead><tr><th>卡型</th><th>机器</th><th>区域</th><th>空闲/总卡</th><th>单价 (元/h)</th><th>CUDA</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card panel">
+      <div class="panel-head">运行日志</div>
+      <div class="logbox" id="logs"></div>
+    </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let cfg = {}, lastAlertSeq = 0, firstLoad = true, audioCtx = null, alarmTimer = null, prevTokOk = false, adlWin = null, lastInsts = [], extInsts = [], dismissedKey = '', curAlertKey = '';
+function openAdl() { try { adlWin = window.open('https://www.autodl.com/market/list', '_blank'); } catch(e) { adlWin = null; } }
+const $ = id => document.getElementById(id);
+
+async function api(path, method, body) {
+  const r = await fetch(path, { method: method || 'GET',
+    headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined });
+  return r.json();
+}
+function save(patch) { Object.assign(cfg, patch); api('/api/config', 'POST', patch); }
+function fmtTime(t) { return t ? new Date(t*1000).toLocaleTimeString() : '—'; }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ---------- 页面切换 ---------- */
+function switchPage(id) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('on', n.dataset.page === id));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('on', p.id === 'page-' + id));
+  try { localStorage.setItem('adl_page', id); } catch(e) {}
+}
+document.querySelectorAll('.nav-item').forEach(n => n.onclick = () => switchPage(n.dataset.page));
+try { const p = localStorage.getItem('adl_page'); if (p && $('page-' + p)) switchPage(p); } catch(e) {}
+
+/* ---------- 报警 ---------- */
+function beep() {
+  if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.type = 'sine'; o.frequency.value = 880; g.gain.value = 0.15;
+  o.start(); g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+  o.stop(audioCtx.currentTime + 0.45);
+}
+function startAlarm() {
+  if (alarmTimer || !cfg.notify_sound) return;
+  beep(); alarmTimer = setInterval(beep, 500);
+  const dur = cfg.alarm_duration;
+  if (dur > 0) setTimeout(stopAlarm, dur * 1000);
+  $('btnMute').style.display = '';
+}
+function stopAlarm() { clearInterval(alarmTimer); alarmTimer = null; $('btnMute').style.display = 'none'; }
+$('btnMute').onclick = stopAlarm;
+$('alertX').onclick = () => { dismissedKey = curAlertKey; $('bigAlert').style.display = 'none'; stopAlarm(); };
+function desktopNotify(text) {
+  if (Notification.permission === 'granted') new Notification('AutoDL 有空闲显卡!', { body: text });
+  else if (Notification.permission !== 'denied') Notification.requestPermission();
+}
+
+/* ---------- 卡型/区域 ---------- */
+async function loadGpuTypes() {
+  let r;
+  try { r = await api('/api/gpu_types'); } catch(e) { r = {}; }
+  const list = (r.data||[]).sort((a,b)=>(b.gpu_rank||0)-(a.gpu_rank||0));
+  if (!list.length) { $('gpuChips').innerHTML = '<span class="hint">卡型加载失败，检查网络后重启</span>'; return; }
+  $('gpuChips').innerHTML = list.map(g =>
+    `<span class="chip" data-g="${esc(g.gpu_name)}">${esc(g.gpu_name)}<span class="cnt"></span></span>`).join('');
+  document.querySelectorAll('#gpuChips .chip').forEach(el => {
+    el.onclick = () => {
+      el.classList.toggle('sel');
+      save({ gpu_names: [...document.querySelectorAll('#gpuChips .chip.sel')].map(x=>x.dataset.g) });
+    };
+    if ((cfg.gpu_names||[]).includes(el.dataset.g)) el.classList.add('sel');
+  });
+}
+async function loadRegions() {
+  let r;
+  try { r = await api('/api/regions'); } catch(e) { r = {}; }
+  const byName = new Map();
+  (r.data||[]).forEach(x => {
+    if (!byName.has(x.region_name)) byName.set(x.region_name, []);
+    byName.get(x.region_name).push(x.region_sign);
+  });
+  $('regionChips').innerHTML = [...byName].map(([name,signs]) =>
+    `<span class="chip" data-r="${signs.join(',')}" title="${signs.join(', ')}">${esc(name)}<span class="cnt">${signs.length>1?signs.length+'机房':''}</span></span>`).join('');
+  document.querySelectorAll('#regionChips .chip').forEach(el => {
+    const signs = el.dataset.r.split(',');
+    el.onclick = () => {
+      el.classList.toggle('sel');
+      const set = new Set();
+      document.querySelectorAll('#regionChips .chip.sel').forEach(x => x.dataset.r.split(',').forEach(s => set.add(s)));
+      save({ region_sign_list: [...set] });
+    };
+    if (signs.every(s => (cfg.region_sign_list||[]).includes(s))) el.classList.add('sel');
+  });
+}
+async function loadImages() {
+  const r = await api('/api/images');
+  const d = r.data || {};
+  const base = d.base || [], priv = d.private || [];
+  let html = '<option value="">— 选择镜像 —</option>';
+  if (priv.length) html += `<optgroup label="我的私有镜像">${priv.map(i =>
+    `<option value="priv:${esc(i.image_uuid)}">${esc(i.image_name || i.name || i.image_uuid)}${i.cuda_v ? ' / cuda'+esc(i.cuda_v) : ''}</option>`).join('')}</optgroup>`;
+  html += `<optgroup label="基础镜像">${base.map(i =>
+    `<option value="${esc(i.uuid)}">${esc(i.framework_name)} ${esc(i.framework_version)} / py${esc(i.python_version)} / cuda${esc(i.cuda_version)}</option>`).join('')}</optgroup>`;
+  $('imageSel').innerHTML = html;
+  if (cfg.private_image_uuid) $('imageSel').value = 'priv:' + cfg.private_image_uuid;
+  else if (cfg.base_image_uuid) $('imageSel').value = cfg.base_image_uuid;
+}
+
+/* ---------- 绑定 ---------- */
+const binds = [
+  ['interval','interval',v=>+v], ['reqGpu','req_gpu_amount',v=>+v],
+  ['maxPrice','max_price',v=>+v], ['notifySound','notify_sound',v=>v],
+  ['autoOpen','auto_open_page',v=>v], ['webhook','webhook_url',v=>v],
+  ['alertMode','alert_mode',v=>v], ['alertCooldown','alert_cooldown',v=>+v],
+  ['alarmDuration','alarm_duration',v=>+v], ['verifyTtl','verify_ttl',v=>+v],
+  ['autoCreate','auto_create',v=>v], ['autoStop','auto_stop_after_create',v=>v],
+  ['chargeType','charge_type',v=>v], ['prepayDuration','prepay_duration',v=>+v],
+  ['expandDisk','expand_data_disk_gb',v=>+v],
+  ['grabWindowEn','grab_window_enable',v=>v],
+  ['grabStart','grab_start',v=>v], ['grabEnd','grab_end',v=>v],
+  ['grabMode','grab_mode',v=>v],
+  ['cloneDataDisk','clone_copy_data_disk',v=>v],
+  ['cloneSparse','clone_ft_sparse',v=>v],
+  ['watchBoot','watch_boot',v=>v], ['autoPowerOn','auto_power_on',v=>v],
+  ['instName','instance_name',v=>v],
+];
+function applyConfig() {
+  $('interval').value = cfg.interval; $('reqGpu').value = cfg.req_gpu_amount;
+  $('maxPrice').value = cfg.max_price; $('notifySound').checked = cfg.notify_sound;
+  $('autoOpen').checked = cfg.auto_open_page; $('webhook').value = cfg.webhook_url;
+  $('alertMode').value = cfg.alert_mode || 'first';
+  $('alertCooldown').value = cfg.alert_cooldown; $('alarmDuration').value = cfg.alarm_duration;
+  $('verifyTtl').value = cfg.verify_ttl;
+  $('autoCreate').checked = cfg.auto_create; $('autoStop').checked = cfg.auto_stop_after_create;
+  $('chargeType').value = cfg.charge_type || 'payg';
+  $('prepayDuration').value = cfg.prepay_duration; $('expandDisk').value = cfg.expand_data_disk_gb;
+  $('grabWindowEn').checked = cfg.grab_window_enable;
+  $('grabStart').value = cfg.grab_start; $('grabEnd').value = cfg.grab_end;
+  $('grabMode').value = cfg.grab_mode || 'image';
+  $('cloneDataDisk').checked = cfg.clone_copy_data_disk !== false;
+  $('cloneSparse').checked = cfg.clone_ft_sparse !== false;
+  $('watchBoot').checked = cfg.watch_boot !== false;
+  $('autoPowerOn').checked = !!cfg.auto_power_on;
+  $('instName').value = cfg.instance_name || '';
+}
+function syncFormStates() {   // 联动禁用: 按量计费无需预付费时长, 未开窗口无需时间段
+  $('prepayDuration').disabled = (cfg.charge_type || 'payg') === 'payg';
+  $('grabStart').disabled = $('grabEnd').disabled = !cfg.grab_window_enable;
+}
+binds.forEach(([id,key,cv]) => {
+  const el = $(id);
+  el.onchange = () => save({ [key]: cv(el.type==='checkbox' ? el.checked : el.value) });
+});
+$('imageSel').onchange = () => {
+  const v = $('imageSel').value;
+  save(v.startsWith('priv:')
+    ? { private_image_uuid: v.slice(5), base_image_uuid: '' }
+    : { base_image_uuid: v, private_image_uuid: '' });
+};
+
+/* ---------- 克隆 ---------- */
+let lastSrcShown = '';
+function toggleGrabMode() {
+  const clone = cfg.grab_mode === 'clone';
+  $('cloneBox').style.display = clone ? '' : 'none';
+  $('imageBox').style.display = clone ? 'none' : '';
+}
+$('grabMode').addEventListener('change', toggleGrabMode);
+$('chargeType').addEventListener('change', syncFormStates);
+$('grabWindowEn').addEventListener('change', syncFormStates);
+async function loadInstances() {
+  try { extInsts = (await api('/api/instances')).data || []; } catch (e) { extInsts = []; }
+}
+function updateSrcPick() {
+  const src = lastInsts.find(i => i.uuid === cfg.clone_source_uuid);
+  const go = `<a href="#" onclick="switchPage('inst');return false">在"我的实例"页 ◉克隆源 列${src ? '更改' : '点选'} →</a>`;
+  $('cloneSrcPick').innerHTML = src
+    ? `克隆源: <b>${esc(src.machine_alias || src.uuid)}</b> · ${src.status === 'shutdown' ? '已关机' : esc(src.status)} —— ${go}`
+    : `<span style="color:var(--amber)">未选克隆源 —— ${go}</span>`;
+}
+async function showCloneSrc() {
+  const u = cfg.clone_source_uuid;
+  if (!u) { $('cloneSrcInfo').textContent = ''; return; }
+  let r;
+  try { r = await api('/api/clone_source?uuid=' + encodeURIComponent(u)); }
+  catch (e) { $('cloneSrcInfo').textContent = '接口不可用，请重启监控脚本'; return; }
+  if (r.code !== 'Success') { $('cloneSrcInfo').textContent = '源信息获取失败'; return; }
+  const d = r.data, used = (d.data_disk_used / 2 ** 30).toFixed(0);
+  $('cloneSrcInfo').innerHTML = `镜像 ${esc(d.framework)} · CUDA ${esc(d.cuda)} · 数据盘已用 ${used}G` +
+    (d.status === 'shutdown' ? '' : ' · <b style="color:var(--red)">源实例未关机，无法克隆!</b>');
+}
+$('candTable').addEventListener('click', async e => {
+  const a = e.target.closest('a.clone-go');
+  if (!a) return;
+  e.preventDefault();
+  if (!confirm(`将源实例 ${cfg.clone_source_uuid} 克隆到 ${a.dataset.m}？立即下单扣费`)) return;
+  let r;
+  try { r = await api('/api/clone', 'POST', { machine_id: a.dataset.m }); }
+  catch (e) { alert('克隆接口不可用，请重启监控脚本'); return; }
+  alert(r.ok ? '克隆下单成功，请到控制台查看克隆进度' : ('克隆失败: ' + (r.msg || '未知错误')));
+});
+$('instTable').addEventListener('change', e => {
+  const cb = e.target.closest('input.boot-w');
+  if (cb) {
+    const cur = new Set(cfg.watch_boot_uuids ?? lastInsts.map(i => i.uuid));
+    cb.checked ? cur.add(cb.dataset.u) : cur.delete(cb.dataset.u);
+    save({ watch_boot_uuids: cur.size === lastInsts.length ? null : [...cur] });
+    return;
+  }
+  const rd = e.target.closest('input.clone-src');
+  if (!rd) return;
+  save({ clone_source_uuid: rd.dataset.u });
+  lastSrcShown = rd.dataset.u; showCloneSrc(); updateSrcPick();
+});
+$('instTable').addEventListener('click', async e => {
+  const a = e.target.closest('a.power-go');
+  if (!a) return;
+  e.preventDefault();
+  if (!confirm(`确认开机实例 ${a.dataset.u}？开机即开始计费`)) return;
+  let r;
+  try { r = await api('/api/power_on', 'POST', { instance_uuid: a.dataset.u }); }
+  catch (e) { alert('接口不可用，请重启监控脚本'); return; }
+  alert(r.ok ? '开机指令已下发，请到控制台确认' : ('开机失败: ' + (r.msg || '未知错误')));
+});
+$('tokenIn').onchange = () => { if ($('tokenIn').value.trim()) save({ token: $('tokenIn').value.trim() }); $('tokenIn').value=''; };
+$('btnStart').onclick = () => api('/api/control','POST',{action:'start'});
+$('btnStop').onclick  = () => api('/api/control','POST',{action:'stop'}).then(stopAlarm);
+$('btnAutoTok').onclick = async () => {
+  $('autoTokHint').textContent = '正在扫描本机浏览器…';
+  $('autoTokHint').style.color = 'var(--dim)';
+  const r = await api('/api/auto_token');
+  if (r.ok) {
+    $('autoTokHint').textContent = '✓ 已自动导入 token';
+    $('autoTokHint').style.color = 'var(--green)';
+  } else {
+    $('autoTokHint').textContent = r.stale
+      ? '找到了旧 token 但已过期 —— 请先在 autodl.com 重新登录，再点这里'
+      : '未找到 —— 请确认浏览器已登录 autodl.com，或用下面的手动方式';
+    $('autoTokHint').style.color = 'var(--amber)';
+  }
+};
+
+/* ---------- 新手引导 ---------- */
+const TOUR_STEPS = [
+  { el:'#gpuChips', card:true, t:'第 1 步 · 选择要抢的卡型',
+    x:'点选想监控的显卡型号，可以多选。芯片右下角的绿色数字是该卡型当前实时空闲的卡数，没数字表示暂无空闲。' },
+  { el:'#regionChips', card:true, t:'第 2 步 · 区域筛选（可选）',
+    x:'只想用特定机房的卡就点选对应区域；一个都不选表示监控全部区域，资源紧张时建议不选以扩大范围。' },
+  { el:'#interval', card:true, t:'第 3 步 · 监控设置',
+    x:'轮询间隔默认 3 秒即可，过快可能被限流。可以设置"每台至少空闲几张卡"和"最高单价"来过滤结果。' },
+  { el:'#notifySound', card:true, t:'第 4 步 · 报警通知',
+    x:'打开声音报警，发现空闲立即响铃+桌面通知；也可以填 Webhook 地址把消息推送到你自己的服务。' },
+  { el:'#autoCreate', card:true, t:'第 5 步 · 自动下单（可选）',
+    x:'开启后检测到空闲会自动下单并立即扣费！方式可选"新建实例(镜像)"或"克隆已有实例"，建议同时打开"抢到即停"。不开启则只报警不扣费。' },
+  { el:'#watchBoot', card:true, t:'第 6 步 · 实例开机监控（可选）',
+    x:'已关机实例想开回来时，需要宿主机有空闲GPU。勾选监控后，机器空出卡会响铃提醒；下方实例表 ☑监控 列选要盯的行，◉克隆源 列选克隆用哪台的盘，还可设置可开机自动开机。' },
+  { el:'#tokenIn', card:true, t:'Token 状态',
+    x:'登录 token 一般会自动获取，无需手动操作。失效时页面会弹出引导，重新登录 autodl 即可自动接回。' },
+  { el:'#btnStart', t:'第 7 步 · 开始监控',
+    x:'点顶部"开始监控"启动轮询，状态灯变绿表示运行中，随时可以停止。' },
+  { el:'#statGrid', t:'实时概览',
+    x:'有空闲时这里会按卡型显示空闲卡数、机器数量和最低单价，绿色高亮即"可以抢"。' },
+  { el:'#candTable', card:true, t:'空闲机器列表',
+    x:'通过实时在线校验的可抢机器会出现在这里。点右侧"去创建"直达官网下单页手动抢，或由自动开抢接管。' },
+  { el:'#logs', card:true, t:'运行日志',
+    x:'所有轮询、报警、创建结果都记录在这里。教程到此结束，祝你抢卡顺利！' },
+];
+let tourIdx = 0, tourOn = false;
+
+function tourEl(st) {
+  const el = document.querySelector(st.el);
+  return el ? (st.card ? (el.closest('.card') || el.closest('.panel') || el) : el) : null;
+}
+function tourPlace(el) {
+  const tip = $('tourTip'), ring = $('tourRing'), pad = 7;
+  el.scrollIntoView({ block: 'center' });
+  const r = el.getBoundingClientRect();
+  ring.style.display = 'block';
+  ring.style.left = (r.left - pad) + 'px'; ring.style.top = (r.top - pad) + 'px';
+  ring.style.width = (r.width + pad * 2) + 'px'; ring.style.height = (r.height + pad * 2) + 'px';
+  const tw = 340, th = 210;
+  let left, top;
+  if (r.left < window.innerWidth * 0.35) {          // 侧栏元素 → 气泡放右侧
+    left = r.right + 16;
+    top = r.top + r.height / 2 - th / 2;
+  } else {                                         // 顶栏/主区 → 气泡放下方居中
+    left = r.left + r.width / 2 - tw / 2;
+    top = r.bottom + 14;
+    if (top + th > window.innerHeight) top = Math.max(60, r.top - th - 8);
+  }
+  left = Math.min(Math.max(12, left), window.innerWidth - tw - 12);
+  top = Math.min(Math.max(12, top), window.innerHeight - th - 12);
+  tip.style.left = left + 'px'; tip.style.top = top + 'px';
+}
+function tourShow() {
+  let st = TOUR_STEPS[tourIdx], el = tourEl(st);
+  while (!el && tourIdx < TOUR_STEPS.length - 1) { tourIdx++; st = TOUR_STEPS[tourIdx]; el = tourEl(st); }
+  if (!el) { endTour(); return; }
+  const pg = el && el.closest('.page');
+  if (pg && !pg.classList.contains('on')) switchPage(pg.id.slice(5));
+  $('tourMask').style.display = 'block';
+  $('tourTip').style.display = 'block';
+  $('tourTitle').textContent = st.t;
+  $('tourText').textContent = st.x;
+  $('tourProg').textContent = (tourIdx + 1) + ' / ' + TOUR_STEPS.length;
+  $('tourPrev').disabled = tourIdx === 0;
+  $('tourNext').textContent = tourIdx === TOUR_STEPS.length - 1 ? '完成' : '下一步';
+  tourPlace(el);
+}
+function startTour() {
+  if (tourOn) return;
+  tourOn = true; tourIdx = 0; tourShow();
+}
+function endTour() {
+  tourOn = false;
+  $('tourMask').style.display = 'none';
+  $('tourRing').style.display = 'none';
+  $('tourTip').style.display = 'none';
+  try { localStorage.setItem('adl_tour_done', '1'); } catch(e) {}
+}
+$('tourNext').onclick = () => { tourIdx >= TOUR_STEPS.length - 1 ? endTour() : (tourIdx++, tourShow()); };
+$('tourPrev').onclick = () => { if (tourIdx > 0) { tourIdx--; tourShow(); } };
+$('tourSkip').onclick = endTour;
+$('btnTour').onclick = e => { e.preventDefault(); startTour(); };
+document.addEventListener('keydown', e => {
+  if (!tourOn) return;
+  if (e.key === 'Escape') endTour();
+  else if (e.key === 'Enter' || e.key === 'ArrowRight') $('tourNext').click();
+  else if (e.key === 'ArrowLeft') $('tourPrev').click();
+});
+window.addEventListener('resize', () => { if (tourOn) tourShow(); });
+function maybeStartTour() {   // 首次使用 & 无遮挡时自动播放
+  if (tourOn || $('setupOverlay').classList.contains('show')) return;
+  try { if (localStorage.getItem('adl_tour_done')) return; } catch(e) {}
+  setTimeout(startTour, 600);
+}
+
+/* ---------- 刷新 ---------- */
+async function refresh() {
+  let s;
+  try { s = await api('/api/state'); } catch(e) { return; }
+  cfg = s.config;
+  $('runPill').className = 'pill' + (s.running ? ' on' : '');
+  $('runText').textContent = s.running ? '监控中' : '已停止';
+  $('btnStart').disabled = s.running; $('btnStop').disabled = !s.running;
+  $('tokBadge').innerHTML = `<span class="dot"></span> token: ${s.has_token ? (s.token_error ? '已失效' : '已配置') : '未配置'}`;
+  $('tokBadge').className = 'pill ' + (s.has_token && !s.token_error ? 'on' : 'err');
+  $('pollInfo').textContent = s.last_poll ? `${fmtTime(s.last_poll)} · ${s.poll_ms}ms · 已抢 ${s.config.created_count||0}` : '';
+  $('pollInfo').style.display = s.last_poll ? '' : 'none';
+  $('balBadge').style.display = $('balBadge').textContent ? '' : 'none';
+  if (firstLoad) { applyConfig(); lastAlertSeq = s.alert_seq; firstLoad = false; }
+  toggleGrabMode(); syncFormStates();
+  if (cfg.grab_mode === 'clone' && cfg.clone_source_uuid && cfg.clone_source_uuid !== lastSrcShown) {
+    lastSrcShown = cfg.clone_source_uuid; showCloneSrc();
+  }
+
+  if (s.summary.length) {
+    $('statGrid').innerHTML = s.summary.map(g =>
+      `<div class="stat flash"><div class="name">${esc(g.gpu_name)}</div>
+       <div class="num">${g.idle_gpus}<small> 卡空闲</small></div>
+       <div class="sub">${g.idle_machines} 台机器 · 最低 ¥${g.min_price.toFixed(2)}/h</div></div>`).join('');
+  } else {
+    $('statGrid').innerHTML = `<div class="stat"><div class="name">—</div>
+      <div class="num">--</div>
+      <div class="sub">${s.running ? (cfg.gpu_names&&cfg.gpu_names.length?'暂无空闲 · 持续监控':'未选择卡型') : '已停止'}</div></div>`;
+  }
+  document.querySelectorAll('#gpuChips .chip').forEach(el => {
+    const g = s.summary.find(x => x.gpu_name === el.dataset.g);
+    el.querySelector('.cnt').textContent = g ? g.idle_gpus : '';
+  });
+
+  const tb = document.querySelector('#candTable tbody');
+  tb.innerHTML = s.candidates.map(c =>
+    `<tr><td><span class="gpu-tag">${esc(c.gpu_name)}</span></td>
+     <td>${esc(c.alias)}</td><td>${esc(c.region_name)}</td>
+     <td><span class="good">${c.idle}</span><span style="color:var(--dim)">/${c.total_gpu}</span></td>
+     <td class="mono">¥${c.price.toFixed(3)}</td><td class="mono" style="color:var(--dim)">${esc(c.cuda)}</td>
+     <td><a class="go" href="https://www.autodl.com/create/${c.region_sign}/${c.machine_id}/${cfg.req_gpu_amount||1}/payg" target="_blank">去创建 →</a>${
+       cfg.clone_source_uuid ? ` <a class="go clone-go" href="#" data-m="${esc(c.machine_id)}" style="margin-left:6px">克隆</a>` : ''}</td></tr>`).join('')
+    || '<tr class="empty-row"><td colspan="7"><div class="empty-box"><div class="t1">暂无可抢机器</div><div>出现空闲即刻提醒</div></div></td></tr>';
+
+  const insts = lastInsts = (s.instances && s.instances.length) ? s.instances : extInsts;
+  $('instPanel').style.display = insts.length ? '' : 'none';
+  const sel = cfg.watch_boot_uuids;
+  document.querySelector('#instTable tbody').innerHTML = insts.map(i => {
+    const w = sel == null || sel.includes(i.uuid);
+    const stTxt = i.status === 'shutdown' ? '已关机' : (i.status === 'running' ? '运行中' : i.status);
+    const boot = i.bootable && w ? ' <span class="gpu-tag" style="color:var(--green);border-color:#bbf0cf;background:var(--green-soft)">可开机</span>' : '';
+    const idle = i.gpu_idle_num == null ? '—'
+      : `<span class="${i.bootable ? 'good' : ''}">${i.gpu_idle_num}</span><span style="color:var(--dim)">/${i.gpu_all_num ?? ''}</span>`;
+    const act = i.status === 'shutdown' ? `<a class="go power-go" href="#" data-u="${i.uuid}">开机</a> ` : '';
+    const isSrc = i.uuid === cfg.clone_source_uuid;
+    return `<tr><td><input type="checkbox" class="mini boot-w" data-u="${esc(i.uuid)}" ${w ? 'checked' : ''}></td>
+      <td><input type="radio" name="cloneSrc" class="mini clone-src" data-u="${esc(i.uuid)}" ${isSrc ? 'checked' : ''} ${i.status !== 'shutdown' ? 'disabled title="须关机才能克隆"' : ''}></td>
+      <td class="mono" style="font-size:12px">${esc(i.uuid)}</td>
+      <td><span class="gpu-tag">${esc(i.gpu) || '—'}</span></td><td>${esc(i.machine_alias) || '—'}</td>
+      <td>${esc(i.region_name)}</td><td>${stTxt}${boot}</td><td class="mono">${idle}</td>
+      <td>${act}<a class="go" href="https://www.autodl.com/console/instance/list" target="_blank">控制台</a></td></tr>`;
+  }).join('');
+  updateSrcPick();
+
+  if (s.alert_seq !== lastAlertSeq && !firstLoad) {
+    lastAlertSeq = s.alert_seq;
+    const msg = s.alert_msg
+      || (s.summary.length ? s.summary.map(g=>`${g.gpu_name} ×${g.idle_gpus}卡`).join('   ') : '');
+    if (msg) { startAlarm(); desktopNotify(msg); }
+  }
+  // 引导层: 无 token 或 token 失效时显示
+  const tokOk = s.has_token && !s.token_error;
+  if (!tokOk) {
+    $('setupTitle').textContent = s.has_token ? 'Token 已失效或权限不足，请重新导入' : '连接 AutoDL 账号';
+    $('setupSub').textContent = s.token_error_msg || '需要一个登录 token 才能查询显卡市场 · 全程只在你本机使用';
+    $('setupOverlay').classList.add('show');
+  } else {
+    $('setupOverlay').classList.remove('show');
+    if (!prevTokOk) {
+      // token 刚到账 -> 关掉 autodl 标签页(浏览器自动回到本页)并聚焦, 自动开始监控
+      try { if (adlWin && !adlWin.closed) adlWin.close(); } catch(e) {}
+      try { window.focus(); } catch(e) {}
+      loadImages(); loadInstances(); fetchBalance();
+      if (!s.running && (s.config.gpu_names||[]).length)
+        api('/api/control','POST',{action:'start'});
+    }
+  }
+  prevTokOk = tokOk;
+  maybeStartTour();
+
+  // 顶部横幅: 报警期间常驻, 抢卡结果展示 15 分钟; ✕ 关闭后同一条不再弹出
+  const cr = s.create_result, crTs = (cr && cr.ts) || 0;
+  curAlertKey = s.alert_seq + '/' + crTs;
+  let banner = '', bannerOk = false;
+  if (curAlertKey !== dismissedKey) {
+    if (cr && s.time - crTs < 900) {
+      banner = cr.ok ? '已抢到实例，请到控制台查看' : '自动创建失败，请手动抢';
+      bannerOk = !!cr.ok;
+    } else if (s.alert_msg) banner = s.alert_msg;
+  }
+  $('bigAlert').className = 'big-alert' + (bannerOk ? ' ok' : '');
+  $('bigAlertMsg').textContent = banner;
+  $('bigAlert').style.display = banner ? 'flex' : 'none';
+  if (!banner) stopAlarm();
+
+  const lb = $('logs');
+  const nearBottom = lb.scrollHeight - lb.scrollTop - lb.clientHeight < 40;
+  lb.textContent = s.logs.join('\n');
+  if (nearBottom) lb.scrollTop = lb.scrollHeight;
+}
+setInterval(refresh, 1500);
+
+async function fetchBalance() {
+  try {
+    const r = await api('/api/balance');
+    if (r.data) { $('balBadge').textContent = '余额 ¥' + ((r.data.assets||0)/1000).toFixed(2); $('balBadge').style.display=''; }
+  } catch(e) {}
+}
+
+async function boot() {
+  // 书签按钮: 在 autodl 页面点击时把 token 带回本页
+  const port = location.port;
+  const bm = "javascript:(()=>{const t=localStorage.getItem('token');"
+    + "if(!t){alert('未检测到登录，请先登录 AutoDL');location.href='https://www.autodl.com/login';}"
+    + "else{location.href='http://127.0.0.1:" + port + "/?token='+encodeURIComponent(t);}})()";
+  $('bmLink').href = bm;
+  $('consoleCode').textContent =
+    "fetch('http://127.0.0.1:" + port + "/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:localStorage.getItem('token')})}).then(r=>alert('token 已导入'))";
+  $('consoleCode').onclick = () => navigator.clipboard.writeText($('consoleCode').textContent);
+
+  const s = await api('/api/state'); cfg = s.config; applyConfig();
+  await Promise.all([loadGpuTypes(), loadRegions(), loadImages(), loadInstances()]);
+  refresh();
+  fetchBalance();
+  Notification.requestPermission();
+}
+boot();
+</script>
+</body>
+</html>
