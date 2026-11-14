@@ -8,8 +8,7 @@ AutoDL GPU 空闲监控 & 抢卡工具：盯住想要的卡型，空卡一出立
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
-<!-- 界面截图：把你的面板截图保存为 docs/screenshot.png 后取消下一行注释 -->
-<!-- ![界面预览](docs/screenshot.png) -->
+![界面预览](docs/screenshot.png)
 
 ## 功能
 
