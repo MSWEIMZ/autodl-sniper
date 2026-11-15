@@ -218,7 +218,10 @@ LOCK = threading.Lock()
 
 def log(msg):
     line = time.strftime("%H:%M:%S") + "  " + msg
-    print(line, flush=True)
+    try:
+        print(line, flush=True)
+    except Exception:
+        pass  # stdout 可能已断开(隐藏窗口/管道关闭/pythonw), 日志仍以 STATE["logs"] 为准
     with LOCK:
         STATE["logs"].append(line)
         if len(STATE["logs"]) > 300:
@@ -902,6 +905,16 @@ def monitor_loop(stop_ev):
     log("监控已停止")
 
 
+def _monitor_entry(stop_ev):
+    """监控线程入口: 兜底异常, 保证 running 状态不会卡死."""
+    try:
+        monitor_loop(stop_ev)
+    except Exception as e:
+        log("监控循环异常退出: %r" % e)
+        if STATE["stop"] is stop_ev:
+            STATE["running"] = False
+
+
 def _order_done(resp, c, cfg, kind):
     """处理下单响应; 成功返回 True."""
     code = resp.get("code")
@@ -1184,7 +1197,7 @@ class Handler(BaseHTTPRequestHandler):
                 # 每次启动用新的 Event: 上一轮残留的 stop.set 不会误杀新循环
                 STATE["stop"] = threading.Event()
                 STATE["running"] = True
-                threading.Thread(target=monitor_loop,
+                threading.Thread(target=_monitor_entry,
                                  args=(STATE["stop"],), daemon=True).start()
             elif act == "stop":
                 STATE["running"] = False
