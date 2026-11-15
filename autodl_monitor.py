@@ -55,6 +55,7 @@ DEFAULT_CONFIG = {
     "watch_boot": True,          # 监控已关机实例的宿主机空闲(可否开机)
     "watch_boot_uuids": None,    # None=监控全部关机实例; 列表=只监控这些; []=都不监控
     "auto_power_on": False,      # 实例变为可开机时自动开机(立即计费,谨慎)
+    "low_balance": 0,            # 余额低于该值(元)时报警, 0=关闭
     "created_count": 0,
 }
 
@@ -207,6 +208,10 @@ STATE = {
     "prev_bootable": set(),      # 上一轮可开机的实例 uuid
     "alert_msg": "",             # 最近一次报警内容
     "alert_kinds": {},           # 报警构成 {market: bool, boot: bool}
+    "history": {},               # gpu_name -> [(ts, idle_gpus)] 空闲数趋势
+    "bal_check": 0.0,            # 上次余额查询时间
+    "low_balance": None,         # 余额低于阈值时的当前余额
+    "retry_at": 0.0,             # 错误退避后下次重试的时间戳
 }
 LOCK = threading.Lock()
 
@@ -786,12 +791,36 @@ def monitor_loop(stop_ev):
                         STATE["prev_bootable"] = bootable
                     if boot_names:
                         alert_parts.append("实例可开机: " + ",".join(boot_names))
+            lb = float(cfg.get("low_balance") or 0)
+            if lb > 0 and now - STATE["bal_check"] > 300:
+                STATE["bal_check"] = now
+                try:
+                    w = api_request("api/v1/wallet")
+                    assets = ((w.get("data") or {}).get("assets") or 0) / 1000.0
+                    if assets < lb:
+                        if STATE["low_balance"] is None:
+                            alert_parts.append("余额不足: ¥%.2f 低于阈值 ¥%.0f"
+                                               % (assets, lb))
+                        STATE["low_balance"] = assets
+                    else:
+                        STATE["low_balance"] = None
+                except Exception:
+                    pass
             should_alert = bool(alert_parts) and (now - STATE["last_alert"] >= cooldown)
             grab_cd = max(10.0, float(cfg.get("interval") or 3))
             should_grab = (cfg.get("auto_create") and cands
                            and in_grab_window(cfg)
                            and now - STATE["last_grab"] >= grab_cd)
             with LOCK:
+                # 本轮新出现的机器打 fresh 标记, 供前端突出"刚空出"
+                newly = cur_ids - STATE["prev_ids"] if STATE["last_poll"] else set()
+                for c in cands:
+                    c["fresh"] = (c["machine_id"] + "|" + c["gpu_name"]) in newly
+                for gname, s_ in summary.items():
+                    ent = STATE["history"].setdefault(gname, [])
+                    ent.append((now, s_["idle_gpus"]))
+                    if len(ent) > 120:
+                        del ent[:-120]
                 STATE["summary"] = sorted(summary.values(), key=lambda x: x["gpu_name"])
                 STATE["candidates"] = cands
                 STATE["last_poll"] = now
@@ -843,6 +872,7 @@ def monitor_loop(stop_ev):
             if should_grab:
                 try_grab(cands, cfg)
             STATE["consec_errors"] = 0
+            STATE["retry_at"] = 0.0
         except Exception as e:
             es = str(e)
             STATE["consec_errors"] += 1
@@ -861,6 +891,7 @@ def monitor_loop(stop_ev):
                 log("触发限流(429), 退避 %.0fs" % backoff)
             else:
                 log("查询失败: %s, %.0fs 后重试" % (es, backoff))
+            STATE["retry_at"] = time.time() + backoff
             stop_ev.wait(backoff)
             continue
         iv = max(2.0, float(cfg.get("interval") or 3))
@@ -1057,6 +1088,10 @@ class Handler(BaseHTTPRequestHandler):
                     "alert_msg": STATE["alert_msg"],
                     "logs": STATE["logs"][-80:],
                     "create_result": STATE["create_result"],
+                    "history": {g: [v for _, v in pts[-60:]]
+                                for g, pts in STATE["history"].items()},
+                    "low_balance": STATE["low_balance"],
+                    "retry_at": STATE["retry_at"],
                     "token_error": STATE["token_error"],
                     "token_error_msg": STATE["token_error_msg"],
                     "config": cfg,

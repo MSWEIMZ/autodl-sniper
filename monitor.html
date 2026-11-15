@@ -289,6 +289,14 @@
     padding: 4px 10px; border-radius: 6px; white-space: nowrap;
   }
   .good { color: var(--green); font-family: var(--mono); font-weight: 700; }
+  .fresh {
+    display: inline-block; margin-left: 7px; padding: 1px 7px; border-radius: 5px;
+    background: var(--green); color: #fff; font-size: 10.5px; font-weight: 800;
+    vertical-align: 1px; letter-spacing: .5px;
+    animation: pulse 1.4s infinite;
+  }
+  .stat { position: relative; }
+  .spark { position: absolute; right: 18px; top: 26px; opacity: .9; }
   .empty-row td { color: var(--dim); text-align: center; font-size: 14px; }
   .empty-row .empty-box { padding: 70px 0; }
   .empty-row .empty-box .t1 { font-size: 15px; color: var(--sub); font-weight: 600; margin-bottom: 6px; }
@@ -565,9 +573,12 @@
         <label class="row">报警冷却 (秒) <input type="number" id="alertCooldown" min="0" max="3600"></label>
         <label class="row">响铃时长 (秒, 0不停) <input type="number" id="alarmDuration" min="0" max="600"></label>
       </details>
+      <label class="row">余额低于 (元, 0=不提醒) <input type="number" id="lowBalance" min="0" step="1"></label>
       <label class="row" style="display:block">Webhook 通知
         <input type="text" id="webhook" placeholder="https://.../{msg}" style="width:100%;margin-top:7px">
       </label>
+      <button id="btnTestAlarm" style="margin-top:10px;padding:7px 16px;font-size:12.5px">🔊 测试报警</button>
+      <div class="hint">响铃+桌面通知+Webhook 一次发全，验证通道是否正常</div>
     </div>
     <div class="card">
       <div class="card-h">Token</div>
@@ -644,6 +655,16 @@ function startAlarm() {
 function stopAlarm() { clearInterval(alarmTimer); alarmTimer = null; $('btnMute').style.display = 'none'; }
 $('btnMute').onclick = stopAlarm;
 $('alertX').onclick = () => { dismissedKey = curAlertKey; $('bigAlert').style.display = 'none'; stopAlarm(); };
+$('btnTestAlarm').onclick = () => { startAlarm(); desktopNotify('测试报警：看到这条说明通知链路正常'); };
+
+/* 空闲趋势迷你折线 */
+function sparkline(pts) {
+  if (!pts || pts.length < 2) return '';
+  const w = 110, h = 26, mx = Math.max(...pts, 1);
+  const step = w / (pts.length - 1);
+  const p = pts.map((v, i) => `${(i * step).toFixed(1)},${(h - 3 - (v / mx) * (h - 7)).toFixed(1)}`).join(' ');
+  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="0,${h - 2} ${p} ${w},${h - 2}" fill="rgba(22,163,74,.13)" stroke="none"/><polyline points="${p}" fill="none" stroke="var(--green)" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+}
 function desktopNotify(text) {
   if (Notification.permission === 'granted') new Notification('AutoDL 有空闲显卡!', { body: text });
   else if (Notification.permission !== 'denied') Notification.requestPermission();
@@ -716,7 +737,7 @@ const binds = [
   ['cloneDataDisk','clone_copy_data_disk',v=>v],
   ['cloneSparse','clone_ft_sparse',v=>v],
   ['watchBoot','watch_boot',v=>v], ['autoPowerOn','auto_power_on',v=>v],
-  ['instName','instance_name',v=>v],
+  ['instName','instance_name',v=>v], ['lowBalance','low_balance',v=>+v],
 ];
 function applyConfig() {
   $('interval').value = cfg.interval; $('reqGpu').value = cfg.req_gpu_amount;
@@ -736,6 +757,7 @@ function applyConfig() {
   $('watchBoot').checked = cfg.watch_boot !== false;
   $('autoPowerOn').checked = !!cfg.auto_power_on;
   $('instName').value = cfg.instance_name || '';
+  $('lowBalance').value = cfg.low_balance || 0;
 }
 function syncFormStates() {   // 联动禁用: 按量计费无需预付费时长, 未开窗口无需时间段
   $('prepayDuration').disabled = (cfg.charge_type || 'payg') === 'payg';
@@ -939,8 +961,18 @@ async function refresh() {
   $('btnStart').disabled = s.running; $('btnStop').disabled = !s.running;
   $('tokBadge').innerHTML = `<span class="dot"></span> token: ${s.has_token ? (s.token_error ? '已失效' : '已配置') : '未配置'}`;
   $('tokBadge').className = 'pill ' + (s.has_token && !s.token_error ? 'on' : 'err');
-  $('pollInfo').textContent = s.last_poll ? `${fmtTime(s.last_poll)} · ${s.poll_ms}ms · 已抢 ${s.config.created_count||0}` : '';
-  $('pollInfo').style.display = s.last_poll ? '' : 'none';
+  const retrySec = (s.retry_at && s.retry_at > s.time) ? Math.ceil(s.retry_at - s.time) : 0;
+  $('pollInfo').textContent = retrySec
+    ? `退避中 · ${retrySec}s 后重试`
+    : (s.last_poll ? `${fmtTime(s.last_poll)} · ${s.poll_ms}ms · 已抢 ${s.config.created_count||0}` : '');
+  $('pollInfo').style.display = (retrySec || s.last_poll) ? '' : 'none';
+  $('pollInfo').className = 'pill' + (retrySec ? ' err' : '');
+  if (s.low_balance != null) {
+    $('balBadge').textContent = '余额 ¥' + s.low_balance.toFixed(2) + ' · 偏低';
+    $('balBadge').className = 'pill err'; $('balBadge').style.display = '';
+  } else if ($('balBadge').textContent) {
+    $('balBadge').className = 'pill';
+  }
   $('balBadge').style.display = $('balBadge').textContent ? '' : 'none';
   if (firstLoad) { applyConfig(); lastAlertSeq = s.alert_seq; firstLoad = false; }
   toggleGrabMode(); syncFormStates();
@@ -952,11 +984,15 @@ async function refresh() {
     $('statGrid').innerHTML = s.summary.map(g =>
       `<div class="stat flash"><div class="name">${esc(g.gpu_name)}</div>
        <div class="num">${g.idle_gpus}<small> 卡空闲</small></div>
-       <div class="sub">${g.idle_machines} 台机器 · 最低 ¥${g.min_price.toFixed(2)}/h</div></div>`).join('');
+       <div class="sub">${g.idle_machines} 台机器 · 最低 ¥${g.min_price.toFixed(2)}/h</div>
+       ${sparkline((s.history||{})[g.gpu_name])}</div>`).join('');
   } else {
+    const emptyTxt = s.running
+      ? (cfg.gpu_names && cfg.gpu_names.length ? '暂无空闲 · 持续监控'
+         : '未选择卡型 —— <a href="#" onclick="switchPage(\'grab\');return false" style="color:var(--primary);font-weight:700">去选卡型 →</a>')
+      : '已停止';
     $('statGrid').innerHTML = `<div class="stat"><div class="name">—</div>
-      <div class="num">--</div>
-      <div class="sub">${s.running ? (cfg.gpu_names&&cfg.gpu_names.length?'暂无空闲 · 持续监控':'未选择卡型') : '已停止'}</div></div>`;
+      <div class="num">--</div><div class="sub">${emptyTxt}</div></div>`;
   }
   document.querySelectorAll('#gpuChips .chip').forEach(el => {
     const g = s.summary.find(x => x.gpu_name === el.dataset.g);
@@ -966,7 +1002,7 @@ async function refresh() {
   const tb = document.querySelector('#candTable tbody');
   tb.innerHTML = s.candidates.map(c =>
     `<tr><td><span class="gpu-tag">${esc(c.gpu_name)}</span></td>
-     <td>${esc(c.alias)}</td><td>${esc(c.region_name)}</td>
+     <td>${esc(c.alias)}${c.fresh ? '<span class="fresh">新</span>' : ''}</td><td>${esc(c.region_name)}</td>
      <td><span class="good">${c.idle}</span><span style="color:var(--dim)">/${c.total_gpu}</span></td>
      <td class="mono">¥${c.price.toFixed(3)}</td><td class="mono" style="color:var(--dim)">${esc(c.cuda)}</td>
      <td><a class="go" href="https://www.autodl.com/create/${c.region_sign}/${c.machine_id}/${cfg.req_gpu_amount||1}/payg" target="_blank">去创建 →</a>${
@@ -974,9 +1010,9 @@ async function refresh() {
     || '<tr class="empty-row"><td colspan="7"><div class="empty-box"><div class="t1">暂无可抢机器</div><div>出现空闲即刻提醒</div></div></td></tr>';
 
   const insts = lastInsts = (s.instances && s.instances.length) ? s.instances : extInsts;
-  $('instPanel').style.display = insts.length ? '' : 'none';
+  $('instPanel').style.display = '';
   const sel = cfg.watch_boot_uuids;
-  document.querySelector('#instTable tbody').innerHTML = insts.map(i => {
+  document.querySelector('#instTable tbody').innerHTML = insts.length ? insts.map(i => {
     const w = sel == null || sel.includes(i.uuid);
     const stTxt = i.status === 'shutdown' ? '已关机' : (i.status === 'running' ? '运行中' : esc(i.status));
     const boot = i.bootable && w ? ' <span class="gpu-tag" style="color:var(--green);border-color:#bbf0cf;background:var(--green-soft)">可开机</span>' : '';
@@ -986,11 +1022,13 @@ async function refresh() {
     const isSrc = i.uuid === cfg.clone_source_uuid;
     return `<tr><td><input type="checkbox" class="mini boot-w" data-u="${esc(i.uuid)}" ${w ? 'checked' : ''}></td>
       <td><input type="radio" name="cloneSrc" class="mini clone-src" data-u="${esc(i.uuid)}" ${isSrc ? 'checked' : ''} ${i.status !== 'shutdown' ? 'disabled title="须关机才能克隆"' : ''}></td>
-      <td class="mono" style="font-size:12px">${esc(i.uuid)}</td>
+      <td><div style="font-size:12.5px;font-weight:600;color:var(--text)">${esc(i.name) || '未命名'}</div>
+        <div class="mono" style="font-size:10.5px;color:var(--dim)" title="${esc(i.uuid)}">${esc(i.uuid)}</div></td>
       <td><span class="gpu-tag">${esc(i.gpu) || '—'}</span></td><td>${esc(i.machine_alias) || '—'}</td>
       <td>${esc(i.region_name)}</td><td>${stTxt}${boot}</td><td class="mono">${idle}</td>
       <td>${act}<a class="go" href="https://www.autodl.com/console/instance/list" target="_blank">控制台</a></td></tr>`;
-  }).join('');
+  }).join('') : `<tr class="empty-row"><td colspan="9"><div class="empty-box" style="padding:44px 0">
+    <div class="t1">暂无实例</div><div>${s.token_ok ? '实例会在这里显示' : '配置 token 后自动加载'}</div></div></td></tr>`;
   updateSrcPick();
 
   if (s.alert_seq !== lastAlertSeq && !firstLoad) {

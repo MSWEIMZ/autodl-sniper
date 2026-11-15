@@ -65,6 +65,7 @@ python autodl_monitor.py     # Windows 也可以双击 启动监控.bat
 | `watch_boot` / `auto_power_on` | 关机实例宿主机监控 / 可开机时自动开机 |
 | `charge_type` / `prepay_duration` | 按量 / 包日 / 包周 / 包月 |
 | `alert_mode` / `alert_cooldown` | 报警触发模式与冷却 |
+| `low_balance` | 余额低于该值（元）时报警提醒，0 = 关闭 |
 
 ## 🔐 安全与隐私
 
