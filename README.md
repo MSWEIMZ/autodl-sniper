@@ -69,7 +69,7 @@ python autodl_monitor.py     # Windows 也可以双击 启动监控.bat
 ## 🔐 安全与隐私
 
 - 面板**只监听 127.0.0.1**——不要把端口转发到局域网或公网
-- Token 只存本机 `config.json`（明文），接口下发前端时永远脱敏，不上传任何第三方
+- Token 只存本机 `config.json`——Windows 下自动用 **DPAPI 加密落盘**（绑定当前机器+当前用户，文件被拷走也无法解开），其他平台为明文；接口下发前端时永远脱敏，不上传任何第三方
 - "自动导入 token"会**遍历本机浏览器 Local Storage** 找 `autodl.com` 的登录记录并校验有效性——只读本机文件、不上传；实现见 `_scan_leveldb_tokens`，欢迎审计，不想用可以全程手动粘贴
 - 接口对跨站请求做了 Origin 白名单，别的网页无法驱动你的本地面板
 

@@ -61,6 +61,58 @@ DEFAULT_CONFIG = {
 SSL_CTX = ssl.create_default_context()
 
 
+def _dpapi(data, unprotect):
+    """Windows DPAPI: 仅当前机器+当前用户可解. 非 Windows 返回 None 走明文."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    import ctypes.wintypes as wt
+
+    class _BLOB(ctypes.Structure):
+        _fields_ = [("cbData", wt.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+    fun = (ctypes.windll.crypt32.CryptUnprotectData if unprotect
+           else ctypes.windll.crypt32.CryptProtectData)
+    fun.argtypes = [ctypes.POINTER(_BLOB), wt.LPCWSTR, ctypes.POINTER(_BLOB),
+                    wt.LPVOID, wt.LPVOID, wt.DWORD, ctypes.POINTER(_BLOB)]
+    fun.restype = wt.BOOL
+    ibuf = ctypes.create_string_buffer(data, len(data))
+    ib = _BLOB(len(data), ibuf)
+    ebuf = ctypes.create_string_buffer(b"autodl-sniper-v1", 16)
+    ent = _BLOB(16, ebuf)
+    ob = _BLOB()
+    if not fun(ctypes.byref(ib), None, ctypes.byref(ent), None, None, 0,
+               ctypes.byref(ob)):
+        raise RuntimeError("DPAPI call failed")
+    try:
+        return ctypes.string_at(ob.pbData, ob.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(ob.pbData)
+
+
+TOKEN_ENC_PREFIX = "dpapi:"
+
+
+def token_encrypt(tok):
+    """明文 -> 存储串; 加密不可用时原样返回(非 Windows)."""
+    enc = _dpapi(tok.encode("utf-8"), unprotect=False)
+    if enc is None:
+        return tok
+    return TOKEN_ENC_PREFIX + base64.b64encode(enc).decode()
+
+
+def token_decrypt(stored):
+    """存储串 -> 明文; 前缀缺失/解密失败返回 ''."""
+    if not stored or not stored.startswith(TOKEN_ENC_PREFIX):
+        return ""
+    try:
+        raw = _dpapi(base64.b64decode(stored[len(TOKEN_ENC_PREFIX):]),
+                     unprotect=True)
+        return raw.decode("utf-8") if raw else ""
+    except Exception:
+        return ""
+
+
 def load_config():
     cfg = dict(DEFAULT_CONFIG)
     try:
@@ -68,12 +120,22 @@ def load_config():
             cfg.update(json.load(f))
     except Exception:
         pass
+    # 新版: 明文 token 不落盘, 解密 token_enc; 解密失败则留空由 rescue 接回
+    if not cfg.get("token") and cfg.get("token_enc"):
+        cfg["token"] = token_decrypt(cfg["token_enc"])
     return cfg
 
 
 def save_config():
+    cfg = dict(STATE["config"])
+    tok = cfg.get("token") or ""
+    if tok and os.name == "nt":
+        cfg["token"] = ""
+        cfg["token_enc"] = token_encrypt(tok)
+    else:
+        cfg["token_enc"] = cfg.get("token_enc") or ""
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(STATE["config"], f, ensure_ascii=False, indent=2)
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
 def _is_sub_user_token(tok):
@@ -962,7 +1024,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, f.read(), "text/html")
         elif path == "/api/state":
             with LOCK:
-                cfg = dict(STATE["config"]); cfg["token"] = "***" if cfg.get("token") else ""
+                cfg = dict(STATE["config"])
+                cfg["token"] = "***" if cfg.get("token") else ""
+                cfg.pop("token_enc", None)
                 self._json({
                     "running": STATE["running"],
                     "last_poll": STATE["last_poll"],
