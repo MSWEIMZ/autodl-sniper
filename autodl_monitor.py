@@ -134,8 +134,15 @@ def save_config():
         cfg["token_enc"] = token_encrypt(tok)
     else:
         cfg["token_enc"] = cfg.get("token_enc") or ""
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+    tmp = CONFIG_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, CONFIG_PATH)   # 原子替换, 防止崩溃写出半截 JSON
+    if os.name != "nt":
+        try:
+            os.chmod(CONFIG_PATH, 0o600)
+        except Exception:
+            pass
 
 
 def _is_sub_user_token(tok):
@@ -962,9 +969,14 @@ ALLOWED_ORIGINS = {
     "http://127.0.0.1:%d" % PORT,
     "http://localhost:%d" % PORT,
 }
+ALLOWED_HOSTS = {"127.0.0.1:%d" % PORT, "localhost:%d" % PORT}
 
 
 class Handler(BaseHTTPRequestHandler):
+    def _host_ok(self):
+        """DNS 重绑定防护: 只认本机 Host, 恶意域名解析到 127.0.0.1 也进不来."""
+        return self.headers.get("Host", "") in ALLOWED_HOSTS
+
     def _cors_origin(self):
         """只对白名单 Origin 回 ACAO; 阻止任意网站跨域读取/调用本地面板."""
         o = self.headers.get("Origin")
@@ -992,6 +1004,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _body(self):
         n = int(self.headers.get("Content-Length") or 0)
+        if n > 1 << 20:
+            raise ValueError("body too large")
         return json.loads(self.rfile.read(n) or b"{}")
 
     def log_message(self, *a):
@@ -1005,9 +1019,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type,Authorization")
+            # Chrome Private Network Access: 公网(autodl.com) -> 环回地址需要此头
+            self.send_header("Access-Control-Allow-Private-Network", "true")
         self.end_headers()
 
     def do_GET(self):
+        if not self._host_ok():
+            self._send(403, "forbidden host", "text/plain")
+            return
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         if path == "/" or path == "/index.html":
@@ -1107,6 +1126,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?")[0]
+        if not self._host_ok():
+            self._send(403, "forbidden host", "text/plain")
+            return
         if not self._origin_ok():
             self._send(403, "forbidden origin", "text/plain")
             return

@@ -978,7 +978,7 @@ async function refresh() {
   const sel = cfg.watch_boot_uuids;
   document.querySelector('#instTable tbody').innerHTML = insts.map(i => {
     const w = sel == null || sel.includes(i.uuid);
-    const stTxt = i.status === 'shutdown' ? '已关机' : (i.status === 'running' ? '运行中' : i.status);
+    const stTxt = i.status === 'shutdown' ? '已关机' : (i.status === 'running' ? '运行中' : esc(i.status));
     const boot = i.bootable && w ? ' <span class="gpu-tag" style="color:var(--green);border-color:#bbf0cf;background:var(--green-soft)">可开机</span>' : '';
     const idle = i.gpu_idle_num == null ? '—'
       : `<span class="${i.bootable ? 'good' : ''}">${i.gpu_idle_num}</span><span style="color:var(--dim)">/${i.gpu_all_num ?? ''}</span>`;
